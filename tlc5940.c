@@ -20,21 +20,18 @@
 	Email: simon.inns@gmail.com
 
 ************************************************************************/
-
-#ifndef TLC5940_C
-#define TLC5940_C
-
 // Note: This library configures the SPI module, the PWM module and
 // sets up a low priority interrupt for dealing with the XLAT processing.
 // (which requires both timer0 and timer2)
 
 // Global includes
-#include <htc.h>
+#include <p18f4520.h>
+#include <pwm.h>
+#include <spi.h>
+#include <timers.h>
 
 // Local includes
-#include "hardware.h"
 #include "tlc5940.h"
-#include "rgbled.h"
 
 // Array for storing the grayscale data packed into bytes
 unsigned char packedGrayScaleDataBuffer1[24 * NUMBEROF5940];
@@ -47,17 +44,19 @@ unsigned char updatePending = 0;
 // Set initial dot correction data
 void setInitialDotCorrection(unsigned char *dotCorrectionValues)
 {	
+	int ledChannel;
+	int bitCounter;
 	// Set VPRG high (Dot correction mode)
 	TLC5940_VPRG = 1;
 	
 	// We are passed an array of unsigned char values which are 8 bits each, however the dot 
 	// correction is expecting 6 bit data for each channel (0-63) so only send the 6 least
 	// significant bits of each entry in the array.  The values need to be sent MSB first.
-	for (int ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++)
+	for (ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++)
 	{
 		unsigned char bitMask = 0b00100000;
 		
-		for (int bitCounter = 5; bitCounter >= 0; bitCounter--)
+		for (bitCounter = 5; bitCounter >= 0; bitCounter--)
 		{
 			// Set SIN to DC data bit
 			TLC5940_SIN = (dotCorrectionValues[ledChannel] & bitMask) >> bitCounter;
@@ -82,14 +81,15 @@ void setInitialDotCorrection(unsigned char *dotCorrectionValues)
 // no way to tell the SPI module to generate the extra clock pulse).
 void setInitialGrayScaleValues()
 {
-	// Set VPRG = Low (Grayscale mode)
-	TLC5940_VPRG = 0;
-	
+	int i;
 	// Reset GSCLK_Counter = 0
 	int GSCLKcounter = 0;
 	
 	// Reset Data_Counter = 0
 	int dataCounter = 0;
+	
+	// Set VPRG = Low (Grayscale mode)
+	TLC5940_VPRG = 0;
 	
 	// Set BLANK = High (Turn LED's Off)
 	TLC5940_BLANK = 1;
@@ -133,11 +133,18 @@ void setInitialGrayScaleValues()
 	// Pulse SCLK
 	TLC5940_SCLK = 1;
 	TLC5940_SCLK = 0;
+	
+	// blank all outputs
+	for(i=0;i<16;i++) {
+		setGrayScaleValue(i, 0);
+	}
+	while(updateTlc5940() == 1);
 }	
 
 // Process XLAT interrupt
 void processXLATinterrupt(void)
 {
+	int byteCounter;
 	// Turn off the LEDs
 	TLC5940_BLANK = 1;
 	
@@ -171,17 +178,17 @@ void processXLATinterrupt(void)
 	if (updatePending == 1)
 	{
 		// We have an update pending, write the serial information to the device
-		SSPIF = 0;
-		for (int byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++)
+		PIR1bits.SSPIF = 0;
+		for (byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++)
 		{
 			// Send the byte to the SPI buffer
-			SSPBUF = packedGrayScaleDataBuffer2[byteCounter];
+			WriteSPI(packedGrayScaleDataBuffer2[byteCounter]);
 			
 			// Wait for the transmission complete flag
-			while (SSPIF == 0);
+			while (PIR1bits.SSPIF == 0);
 			
 			// Reset the transmission complete flag
-			SSPIF = 0;
+			PIR1bits.SSPIF = 0;
 		}
 		
 		// Serial data is now updated, clear the flag
@@ -196,6 +203,9 @@ void processXLATinterrupt(void)
 // Initialise the TLC5940 devices
 void initialiseTlc5940()
 {
+	unsigned char dotCorrectionValues[16 * NUMBEROF5940];
+	unsigned char ledChannel;
+	
 	// Initialise device pins
 	TLC5940_GSCLK 	= 0;
 	TLC5940_SCLK 	= 0;
@@ -204,8 +214,8 @@ void initialiseTlc5940()
 	TLC5940_BLANK 	= 1;
 	
 	// Set up an array of dot correction values (0-63)
-	unsigned char dotCorrectionValues[16 * NUMBEROF5940];
-	for (unsigned char ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++)
+	
+	for (ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++)
 		dotCorrectionValues[ledChannel] = 63;
 	
 	// Set the initial dot correction values
@@ -214,12 +224,8 @@ void initialiseTlc5940()
 	// Set the initial grayscale values
 	setInitialGrayScaleValues();
 	
-		// Set up SPI for communicating with the TLC5940
-	SSPSTAT = 0b11000000;	// SPI Master
-							// Tx occurs on active to idle transition
-
-	SSPCON1 = 0b00100000;	// Serial port enabled
-							// Speed is Fosc/4 = 12Mhz
+	// Set up SPI for communicating with the TLC5940
+	OpenSPI(SPI_FOSC_4, MODE_00, SMPEND);	
 
 	// PWM1 is used to generate the GSCLK clock signal
 	//
@@ -231,8 +237,9 @@ void initialiseTlc5940()
 	// PWM 1 is 250,000 Hz (250 KHz)
 	//
 	
-	PR2 = 0b00000010;
-	T2CON = 0b00000111;
+	OpenTimer2(TIMER_INT_OFF & T2_PS_1_1);
+	SetOutputPWM1(SINGLE_OUT, PWM_MODE_1);
+	OpenPWM1(7);
 	CCPR1L = 0b00000001;
 	CCP1CON = 0b00011100;
 	
@@ -244,30 +251,28 @@ void initialiseTlc5940()
 	// We need to wait for 4096 pulses before calling the interrupt
 	// so 4 uS * 4096 = 16384 uS
 	//
-	// Fosc is 48,000,000 (48Mhz), so Fosc/4 = 12,000,000
-	// Therefore there are 12 ticks per 1uS
+	// Fosc is 1,000,000 (1Mhz), so Fosc/4 = 250,000
+	// Therefore there are 1 ticks per 4uS
 	//
-	// 16,384 uS * 12 = 196,608 timer ticks at 1:1 prescale
-	// 49,152 ticks @ 1:4 prescaler (requires 16 bit mode)
+	// 16,384 uS * 1/4 = 4096 timer ticks at 1:1 prescale
 	//
-	// Therefore we need to set the timer to 65,535 - 49,152
-	// = 16,383 which is 0x3FFF
+	// Therefore we need to set the timer to 65,535 - 8 192
+	// 53247 =  which is CFFF
 	
-	IPEN = 1;				// Enable prioritised interrupts
-	
-	TMR0IP = 1;				// Set timer0 interrupt to high priority
-	TMR0IF = 0;				// Clear the timer0 interrupt flag
-	TMR0L  = XLATCOUNTL;	// Reset the timer0 counter
-	TMR0H  = XLATCOUNTH;
+	RCONbits.IPEN = 1;				// Enable prioritised interrupts
 
-	T0CON = 0b10000001; // Timer0 on, 16-bit and 1:4 prescaler
-	TMR0IE = 1;			// Enable the timer0 interrupt
+	//T0CON = 0b10000000; // Timer0 on, 16-bit and 1:1 prescaler
+	//INTCONbits.TMR0IE = 1;			// Enable the timer0 interrupt
+	OpenTimer0( TIMER_INT_ON & T0_16BIT & T0_SOURCE_INT & T0_PS_1_2 );
+	INTCON2bits.TMR0IP = 1;				// Set timer0 interrupt to high priority
+	INTCONbits.TMR0IF = 0;				// Clear the timer0 interrupt flag
+	WriteTimer0(XLATCOUNTTIMER);
 
 	// Global enable high priority interrupts
-	GIEH = 1;			// Global enable all high priority interrupts
+	INTCONbits.GIEH = 1;			// Global enable all high priority interrupts
 	
 	// Global enable low priority interrupts
-	GIEL = 1;
+	INTCONbits.GIEL = 1;
 }
 
 // Set the grayscale value of a LED channel
@@ -303,6 +308,8 @@ void setGrayScaleValue(unsigned char channel, int value)
 // Update the TLC5940 send buffer
 unsigned char updateTlc5940(void)
 {
+	int byteCounter;
+	
 	// If an update is already pending, return with status 0;
 	if (updatePending == 1) return 0;
 	
@@ -310,7 +317,7 @@ unsigned char updateTlc5940(void)
 	// Note: We are using double-buffering to prevent a partial
 	// update from occurring (since an XLAT interrupt could occur
 	// whilst we are still updating the data)
-	for (int byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++)
+	for (byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++)
 		packedGrayScaleDataBuffer2[byteCounter] = packedGrayScaleDataBuffer1[byteCounter];
 		
 	// Set the update pending flag
@@ -318,24 +325,4 @@ unsigned char updateTlc5940(void)
 	
 	// Update ok, return with status 0
 	return 0;
-}	
-
-// Low priority interrupt procedure for XLAT and RGB LED fade processing
-void interrupt low_priority lpHandler(void)
-{
-	// Is this timer0 interrupting (XLAT interrupt handler)?
-	if (TMR0IF)
-	{
-		// Process the RGB LED Brightness levels
-		procesRgbLedBrightness();
-		
-		// Process the XLAT interrupt
-		processXLATinterrupt();		
-		
-		// Get ready for the next interrupt -----------------------------------
-		TMR0L  = XLATCOUNTL;	// Reset the timer0 counter
-		TMR0H  = XLATCOUNTH;
-		TMR0IF = 0;				// Clear the timer0 interrupt flag
-	}
 }
-#endif

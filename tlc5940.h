@@ -24,26 +24,27 @@
 #ifndef TLC5940_H
 #define TLC5940_H
 
+#include <p18f4520.h>
+
 // TLC5940 Hardware mapping definitions
 
 // Note: SIN, SCLK and GSCLK are tied to module functions on the PIC
 // and you can't change these without changing the appropriate library
 // functions.
-#define TLC5940_SIN		RC7
-#define TLC5940_SCLK	RB1
-#define TLC5940_GSCLK	RC2
+#define TLC5940_SIN		PORTCbits.RC5	//SDO
+#define TLC5940_SCLK	PORTCbits.RC3	//SCK/SCL
+#define TLC5940_GSCLK	PORTCbits.RC2	//CCP1
 
 // These you can assign to other pins if required
-#define TLC5940_XLAT	RA0
-#define TLC5940_VPRG	RA1
-#define TLC5940_BLANK	RA2
+#define TLC5940_XLAT	PORTAbits.RA0
+#define TLC5940_VPRG	PORTAbits.RA1
+#define TLC5940_BLANK	PORTAbits.RA2
 
 // XLAT timer period
-#define XLATCOUNTH 		0x3F
-#define XLATCOUNTL 		0xFF
+#define XLATCOUNTTIMER	53247
 
 // The number of cascaded TLC5940s
-#define NUMBEROF5940	3
+#define NUMBEROF5940	1
 
 // Function prototypes
 void setInitialDotCorrection(unsigned char *dotCorrectionValues);
@@ -52,6 +53,5 @@ void processXLATinterrupt(void);
 void initialiseTlc5940(void);
 void setGrayScaleValue(unsigned char channel, int value);
 unsigned char updateTlc5940(void);
-void interrupt low_priority lpHandler(void);
 
 #endif
