@@ -1,8 +1,8 @@
 /************************************************************************
 	tlc5940.h
 
-    TLC5940 LED driver library
-    Copyright (C) 2010 Simon Inns
+    TLC5940 LED driver PIC library
+    Copyright (C) 2011 Kevin Risden
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-	Email: simon.inns@gmail.com
+	Email: compuwizard123@gmail.com
 
 ************************************************************************/
 
@@ -29,8 +29,6 @@
 // TLC5940 Hardware mapping definitions
 
 // Note: SIN, SCLK and GSCLK are tied to module functions on the PIC
-// and you can't change these without changing the appropriate library
-// functions.
 #define TLC5940_SIN		PORTCbits.RC5	//SDO
 #define TLC5940_SCLK	PORTCbits.RC3	//SCK/SCL
 #define TLC5940_GSCLK	PORTCbits.RC2	//CCP1
