@@ -48,10 +48,12 @@ void setInitialDotCorrection(unsigned char *dotCorrectionValues)
 	// We are passed an array of unsigned char values which are 8 bits each, however the dot 
 	// correction is expecting 6 bit data for each channel (0-63) so only send the 6 least
 	// significant bits of each entry in the array.  The values need to be sent MSB first.
-	for(ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++) {
+	for(ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++)
+	  {
 		unsigned char bitMask = 0b00100000;
 		
-		for(bitCounter = 5; bitCounter >= 0; bitCounter--) {
+		for(bitCounter = 5; bitCounter >= 0; bitCounter--)
+		  {
 			// Set SIN to DC data bit
 			TLC5940_SIN = (dotCorrectionValues[ledChannel] & bitMask) >> bitCounter;
 			
@@ -61,8 +63,8 @@ void setInitialDotCorrection(unsigned char *dotCorrectionValues)
 			
 			// Move to the next bit in the mask
 			bitMask >>= 1;
-		}
-	}	
+		  }
+	  }	
 	
 	// Pulse XLAT
 	TLC5940_XLAT = 1;
@@ -88,14 +90,18 @@ void setInitialGrayScaleValues()
 	// Set BLANK = High (Turn LED's Off)
 	TLC5940_BLANK = 1;
 	
-	for(GSCLKcounter = 0; GSCLKcounter < 4096; GSCLKcounter++) {
-		if(dataCounter > (NUMBEROF5940 * 192)) {
+	for(GSCLKcounter = 0; GSCLKcounter < 4096; GSCLKcounter++)
+	  {
+		if(dataCounter > (NUMBEROF5940 * 192))
+		  {
 			// Pulse GSCLK
 			TLC5940_GSCLK = 1;
 			TLC5940_GSCLK = 0;
-		} else {
+		  } 
+		else 
+		  {
 			// Set SIN to the greyscale data bit
-			TLC5940_SIN = 0; // We just output zero for everything during initialisation
+			TLC5940_SIN = 0; // output zero during initialisation
 			
 			// Pulse SCLK
 			TLC5940_SCLK = 1;
@@ -107,8 +113,8 @@ void setInitialGrayScaleValues()
 			// Pulse GSCLK
 			TLC5940_GSCLK = 1;
 			TLC5940_GSCLK = 0;
-		}	
-	}
+		  }	
+	  }
 	
 	// Pulse XLAT to latch in GS data
 	TLC5940_XLAT = 1;
@@ -125,9 +131,10 @@ void setInitialGrayScaleValues()
 	TLC5940_SCLK = 0;
 	
 	// blank all outputs
-	for(i=0;i<16;i++) {
+	for(i=0;i<16;i++) 
+	  {
 		setGrayScaleValue(i, 0);
-	}
+	  }
 	while(updateTlc5940() == 1);
 }	
 
@@ -139,14 +146,15 @@ void processXLATinterrupt(void)
 	TLC5940_BLANK = 1;
 	
 	// Are we waiting for an XLAT pulse to latch new data?
-	if(waitingForXLAT == 1) {
+	if(waitingForXLAT == 1) 
+	  {
 		// Pulse the XLAT signal
 		TLC5940_XLAT = 1;
 		TLC5940_XLAT = 0;
 		
 		// Clear the flag
 		waitingForXLAT = 0;
-	}
+	  }
 	
 	// Turn on the LEDs
 	TLC5940_BLANK = 0;
@@ -157,10 +165,12 @@ void processXLATinterrupt(void)
 	// XLAT interrupt is due.
 	
 	// Do we have an update to the data pending?
-	if(updatePending == 1) {
+	if(updatePending == 1) 
+	  {
 		// We have an update pending, write the serial information to the device
 		PIR1bits.SSPIF = 0;
-		for(byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++) {
+		for(byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++) 
+		  {
 			// Send the byte to the SPI buffer
 			WriteSPI(packedGrayScaleDataBuffer2[byteCounter]);
 			
@@ -169,7 +179,7 @@ void processXLATinterrupt(void)
 			
 			// Reset the transmission complete flag
 			PIR1bits.SSPIF = 0;
-		}
+		  }
 		
 		// Serial data is now updated, clear the flag
 		updatePending = 0;
@@ -177,7 +187,7 @@ void processXLATinterrupt(void)
 		// Set the waiting for XLAT flag to indicate there is data waiting
 		// to be latched
 		waitingForXLAT = 1;
-	}
+	  }
 }				
 
 // Initialise the TLC5940 devices
@@ -194,9 +204,10 @@ void initialiseTlc5940()
 	TLC5940_BLANK 	= 1;
 	
 	// Set up an array of dot correction values (0-63)
-	for(ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++) {
+	for(ledChannel = 0; ledChannel < (16 * NUMBEROF5940); ledChannel++) 
+	  {
 		dotCorrectionValues[ledChannel] = 63;
-	}
+	  }
 	
 	// Set the initial dot correction values
 	setInitialDotCorrection(dotCorrectionValues);
@@ -259,20 +270,23 @@ void setGrayScaleValue(unsigned char channel, int value)
 	unsigned char eightBitIndex = (NUMBEROF5940 * 16 - 1) - channel;
 	unsigned char *twelveBitIndex = packedGrayScaleDataBuffer1 + ((eightBitIndex * 3) >> 1);
 	
-	if(eightBitIndex & 1) {
+	if(eightBitIndex & 1) 
+	  {
 		// Value starts in the middle of the byte
 		// Set only the top 4 bits
 		*twelveBitIndex = (*twelveBitIndex & 0xF0) | (value >> 8);
 		
 		// Now set the lower 4 bits of the next byte
 		*(++twelveBitIndex) = value & 0xFF;
-	} else {
+	  } 
+	else 
+	  {
 		// Value starts at the start of the byte
 		*(twelveBitIndex++) = value >> 4;
 		
 		// Now set the 4 lower bits of the next byte leaving the top 4 bits alone
 		*twelveBitIndex = ((unsigned char)(value << 4)) | (*twelveBitIndex & 0xF);
-	}		
+	  }		
 }		
 
 // Update the TLC5940 send buffer
@@ -281,17 +295,19 @@ unsigned char updateTlc5940(void)
 	int byteCounter;
 	
 	// If an update is already pending, return with status 0;
-	if(updatePending == 1) {
-	  return 0;
-	}
+	if(updatePending == 1) 
+	  {
+		return 0;
+	  }
 	
 	// Copy over our packed data buffer to the send data buffer
 	// Note: We are using double-buffering to prevent a partial
 	// update from occurring (since an XLAT interrupt could occur
 	// whilst we are still updating the data)
-	for(byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++) {
+	for(byteCounter = 0; byteCounter < (24 * NUMBEROF5940); byteCounter++) 
+	  {
 		packedGrayScaleDataBuffer2[byteCounter] = packedGrayScaleDataBuffer1[byteCounter];
-	}
+	  }
 		
 	// Set the update pending flag
 	updatePending = 1;
